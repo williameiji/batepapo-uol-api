@@ -37,6 +37,8 @@ app.post("/participants", (req, res) => {
 		lastStatus: Date.now(),
 	});
 
+	//push massage to db
+
 	res.sendStatus(201);
 });
 
@@ -113,5 +115,33 @@ app.post("/status", (req, res) => {
 
 	res.sendStatus(404);
 });
+
+function removeInactiveUser(user) {
+	const time = Date.now() - 5000;
+	if (user.lastStatus < time) {
+		return user;
+	}
+}
+
+setInterval(() => {
+	const inactiveUser = participants
+		.map((part) => part)
+		.filter(removeInactiveUser);
+
+	inactiveUser.forEach((item) => {
+		let searchUser = participants.find((a) => a === item);
+		let findIndex = participants.indexOf(searchUser);
+
+		messages.push({
+			from: item.name,
+			to: "Todos",
+			text: "sai da sala...",
+			type: "status",
+			time: dayjs(new Date()).format("HH:mm:ss"),
+		});
+
+		participants.splice(findIndex, 1);
+	});
+}, 15000);
 
 app.listen(PORT);
