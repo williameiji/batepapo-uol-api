@@ -12,10 +12,20 @@ app.use(cors());
 const participants = [];
 const messages = [];
 
-app.post("/participants", (req, res) => {
-	const user = req.body;
+const schema = Joi.object({
+	name: Joi.string().alphanum().min(1),
 
-	const { error, value } = Joi.string().alphanum().min(1).validate(user.name);
+	to: Joi.string().min(1),
+
+	text: Joi.string().min(1),
+
+	type: Joi.any().valid("message", "private_message"),
+});
+
+app.post("/participants", (req, res) => {
+	const { name } = req.body;
+
+	const { error } = schema.validate({ name });
 
 	if (error) {
 		res.sendStatus(422);
@@ -24,7 +34,7 @@ app.post("/participants", (req, res) => {
 
 	//procurar no db
 	const isParticipantRegistred = participants.some(
-		(part) => part.name === user.name
+		(part) => part.name === name
 	);
 
 	if (isParticipantRegistred) {
@@ -33,11 +43,18 @@ app.post("/participants", (req, res) => {
 	}
 
 	participants.push({
-		name: user.name,
+		name: name,
 		lastStatus: Date.now(),
 	});
 
 	//push massage to db
+	messages.push({
+		from: name,
+		to: "Todos",
+		text: "entra na sala...",
+		type: "status",
+		time: dayjs(new Date()).format("HH:mm:ss"),
+	});
 
 	res.sendStatus(201);
 });
@@ -49,21 +66,11 @@ app.get("/participants", (req, res) => {
 app.post("/messages", (req, res) => {
 	const { to, text, type } = req.body;
 	const { user } = req.headers;
-
-	const toError = Joi.string().min(1).validate(to);
-	const textError = Joi.string().min(1).validate(text);
-	const typeError = Joi.any()
-		.valid("message", "private_message")
-		.validate(type);
+	const { error } = schema.validate({ to, text, type });
 
 	const isParticipantOnline = participants.some((part) => part.name === user);
 
-	if (
-		toError.error ||
-		textError.error ||
-		typeError.error ||
-		!isParticipantOnline
-	) {
+	if (error || !isParticipantOnline) {
 		res.sendStatus(422);
 		return;
 	}
@@ -83,15 +90,15 @@ app.get("/messages", (req, res) => {
 	const limit = req.query.limit;
 	const user = req.headers.user;
 	const end = messages.length;
-	const start = limit - 1;
+	const start = limit;
 
 	const filteredMessages = messages.filter(
-		(msg) => msg.to === "todos" || msg.to === user || msg.from === user
+		(msg) => msg.to === "Todos" || msg.to === user || msg.from === user
 	);
 
-	if (limit) {
-		const sendMessages = filteredMessages.slice(start, end);
-		res.send(filteredMessages);
+	if (filteredMessages.length > limit) {
+		const sendMessages = filteredMessages.slice(start * -1, end);
+		res.send(sendMessages);
 		return;
 	}
 
