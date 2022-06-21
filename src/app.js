@@ -43,7 +43,7 @@ app.post("/participants", (req, res) => {
 });
 
 app.get("/participants", (req, res) => {
-	//get
+	res.send(participants);
 });
 
 app.listen(PORT);
