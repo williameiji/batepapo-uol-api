@@ -78,7 +78,22 @@ app.post("/messages", (req, res) => {
 });
 
 app.get("/messages", (req, res) => {
-	res.send(messages);
+	const limit = req.query.limit;
+	const user = req.headers.user;
+	const end = messages.length;
+	const start = limit - 1;
+
+	const filteredMessages = messages.filter(
+		(msg) => msg.to === "todos" || msg.to === user || msg.from === user
+	);
+
+	if (limit) {
+		const sendMessages = filteredMessages.slice(start, end);
+		res.send(filteredMessages);
+		return;
+	}
+
+	res.send(filteredMessages);
 });
 
 app.listen(PORT);
