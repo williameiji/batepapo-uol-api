@@ -96,4 +96,22 @@ app.get("/messages", (req, res) => {
 	res.send(filteredMessages);
 });
 
+app.post("/status", (req, res) => {
+	const user = req.headers.user;
+
+	const searchUser = participants.find((part) => part.name === user);
+	const indexUser = participants.indexOf(searchUser);
+
+	if (searchUser) {
+		participants[indexUser] = {
+			...participants[indexUser],
+			lastStatus: Date.now(),
+		};
+		res.sendStatus(200);
+		return;
+	}
+
+	res.sendStatus(404);
+});
+
 app.listen(PORT);
