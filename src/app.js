@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import Joi from "joi";
+import dayjs from "dayjs";
 
 const app = express();
 const PORT = 5000;
@@ -8,16 +9,13 @@ const PORT = 5000;
 app.use(express.json());
 app.use(cors());
 
-const schema = Joi.object({
-	name: Joi.string().alphanum().min(3).max(30).required(),
-});
-
 const participants = [];
+const messages = [];
 
 app.post("/participants", (req, res) => {
-	const { name } = req.body;
+	const user = req.body;
 
-	const { error, value } = schema.validate({ name });
+	const { error, value } = Joi.string().alphanum().min(1).validate(user.name);
 
 	if (error) {
 		res.sendStatus(422);
@@ -26,7 +24,7 @@ app.post("/participants", (req, res) => {
 
 	//procurar no db
 	const isParticipantRegistred = participants.some(
-		(user) => user.name === name
+		(part) => part.name === user.name
 	);
 
 	if (isParticipantRegistred) {
@@ -35,7 +33,7 @@ app.post("/participants", (req, res) => {
 	}
 
 	participants.push({
-		name,
+		name: user.name,
 		lastStatus: Date.now(),
 	});
 
@@ -44,6 +42,43 @@ app.post("/participants", (req, res) => {
 
 app.get("/participants", (req, res) => {
 	res.send(participants);
+});
+
+app.post("/messages", (req, res) => {
+	const { to, text, type } = req.body;
+	const { user } = req.headers;
+
+	const toError = Joi.string().min(1).validate(to);
+	const textError = Joi.string().min(1).validate(text);
+	const typeError = Joi.any()
+		.valid("message", "private_message")
+		.validate(type);
+
+	const isParticipantOnline = participants.some((part) => part.name === user);
+
+	if (
+		toError.error ||
+		textError.error ||
+		typeError.error ||
+		!isParticipantOnline
+	) {
+		res.sendStatus(422);
+		return;
+	}
+
+	messages.push({
+		from: user,
+		to,
+		text,
+		type,
+		time: dayjs(new Date()).format("HH:mm:ss"),
+	});
+
+	res.sendStatus(201);
+});
+
+app.get("/messages", (req, res) => {
+	res.send(messages);
 });
 
 app.listen(PORT);
