@@ -2,8 +2,7 @@ import express from "express";
 import cors from "cors";
 import Joi from "joi";
 import dayjs from "dayjs";
-
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { strict as assert } from "assert";
 import { stripHtml } from "string-strip-html";
 import dotenv from "dotenv";
@@ -107,7 +106,7 @@ app.post("/messages", (req, res) => {
 app.get("/messages", (req, res) => {
 	const limit = req.query.limit;
 	const user = req.headers.user;
-	const start = limit;
+	const start = limit * -1;
 
 	db.collection("messages")
 		.find()
@@ -116,17 +115,36 @@ app.get("/messages", (req, res) => {
 			const filteredMessages = allMessages.filter(
 				(msg) => msg.to === "Todos" || msg.to === user || msg.from === user
 			);
-
 			if (filteredMessages.length > limit) {
 				const sendMessages = filteredMessages.slice(
-					start * -1,
+					start,
 					filteredMessages.length
 				);
+
 				res.send(sendMessages);
 				return;
 			}
 
 			res.send(filteredMessages);
+		});
+});
+
+app.delete("/messages/:idMessage", (req, res) => {
+	const id = req.params.idMessage;
+	const { user } = req.headers;
+
+	db.collection("messages")
+		.findOne({ _id: ObjectId(`${id}`), from: user })
+		.then((MessageToDelete) => {
+			if (user !== MessageToDelete.from) {
+				res.sendStatus(401);
+				return;
+			}
+
+			db.collection("messages").deleteOne(MessageToDelete);
+		})
+		.catch(() => {
+			res.sendStatus(404);
 		});
 });
 
