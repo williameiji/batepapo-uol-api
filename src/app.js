@@ -32,8 +32,7 @@ const schema = Joi.object({
 
 app.post("/participants", (req, res) => {
 	const { name } = req.body;
-
-	const { error } = schema.validate({ name });
+	const { error } = schema.validate({ name: name });
 
 	if (error) {
 		res.sendStatus(422);
@@ -52,7 +51,7 @@ app.post("/participants", (req, res) => {
 		});
 
 	db.collection("users").insertOne({
-		name: name,
+		name: stripHtml(name.trim()).result,
 		lastStatus: Date.now(),
 	});
 
@@ -79,9 +78,13 @@ app.get("/participants", (req, res) => {
 });
 
 app.post("/messages", (req, res) => {
-	const { to, text, type } = req.body;
+	const messageBody = req.body;
 	const { user } = req.headers;
-	const { error } = schema.validate({ to, text, type });
+	const { error } = schema.validate({
+		to: messageBody.to,
+		text: messageBody.text,
+		type: messageBody.type,
+	});
 
 	const isParticipantOnline = db.collection("users").findOne({ name: user });
 
@@ -92,10 +95,10 @@ app.post("/messages", (req, res) => {
 
 	db.collection("messages")
 		.insertOne({
-			from: user,
-			to,
-			text,
-			type,
+			from: stripHtml(user.trim()).result,
+			to: stripHtml(messageBody.to.trim()).result,
+			text: stripHtml(messageBody.text.trim()).result,
+			type: stripHtml(messageBody.type.trim()).result,
 			time: dayjs(new Date()).format("HH:mm:ss"),
 		})
 		.then(() => {
@@ -171,13 +174,17 @@ app.put("/messages/:idMessage", (req, res) => {
 				return;
 			}
 
-			db.collection("messages").replaceOne(MessageToChange, {
-				from: user,
-				to,
-				text,
-				type,
-				time: dayjs(new Date()).format("HH:mm:ss"),
-			});
+			db.collection("messages")
+				.replaceOne(MessageToChange, {
+					from: user,
+					to,
+					text,
+					type,
+					time: dayjs(new Date()).format("HH:mm:ss"),
+				})
+				.then(() => {
+					res.sendStatus(200);
+				});
 		})
 		.catch(() => {
 			res.sendStatus(404);
