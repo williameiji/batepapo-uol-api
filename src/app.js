@@ -148,6 +148,42 @@ app.delete("/messages/:idMessage", (req, res) => {
 		});
 });
 
+app.put("/messages/:idMessage", (req, res) => {
+	const id = req.params.idMessage;
+	const { to, text, type } = req.body;
+	const { user } = req.headers;
+	const { error } = schema.validate({ to, text, type });
+
+	db.collection("messages")
+		.findOne({ _id: ObjectId(`${id}`), from: user })
+		.then((MessageToChange) => {
+			const isParticipantOnline = db
+				.collection("users")
+				.findOne({ name: user });
+
+			if (error || !isParticipantOnline) {
+				res.sendStatus(422);
+				return;
+			}
+
+			if (user !== MessageToChange.from) {
+				res.sendStatus(401);
+				return;
+			}
+
+			db.collection("messages").replaceOne(MessageToChange, {
+				from: user,
+				to,
+				text,
+				type,
+				time: dayjs(new Date()).format("HH:mm:ss"),
+			});
+		})
+		.catch(() => {
+			res.sendStatus(404);
+		});
+});
+
 app.post("/status", (req, res) => {
 	const user = req.headers.user;
 
