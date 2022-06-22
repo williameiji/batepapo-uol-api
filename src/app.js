@@ -21,9 +21,6 @@ mongoClient.connect().then(() => {
 	db = mongoClient.db("batepapo_uol");
 });
 
-const participants = [];
-const messages = [];
-
 const schema = Joi.object({
 	name: Joi.string().alphanum().min(1),
 
@@ -110,7 +107,6 @@ app.post("/messages", (req, res) => {
 app.get("/messages", (req, res) => {
 	const limit = req.query.limit;
 	const user = req.headers.user;
-	const end = messages.length;
 	const start = limit;
 
 	db.collection("messages")
@@ -122,7 +118,10 @@ app.get("/messages", (req, res) => {
 			);
 
 			if (filteredMessages.length > limit) {
-				const sendMessages = filteredMessages.slice(start * -1, end);
+				const sendMessages = filteredMessages.slice(
+					start * -1,
+					filteredMessages.length
+				);
 				res.send(sendMessages);
 				return;
 			}
