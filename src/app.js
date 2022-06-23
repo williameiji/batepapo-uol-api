@@ -3,9 +3,9 @@ import cors from "cors";
 import Joi from "joi";
 import dayjs from "dayjs";
 import { MongoClient, ObjectId } from "mongodb";
-import { strict as assert } from "assert";
 import { stripHtml } from "string-strip-html";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 const app = express();
@@ -30,7 +30,7 @@ const schema = Joi.object({
 	type: Joi.any().valid("message", "private_message"),
 });
 
-app.post("/participants", (req, res) => {
+app.post("/participants", async (req, res) => {
 	const { name } = req.body;
 	const { error } = schema.validate({ name: name });
 
@@ -39,45 +39,46 @@ app.post("/participants", (req, res) => {
 		return;
 	}
 
-	db.collection("users")
-		.findOne({
+	try {
+		const isUserOnline = await db.collection("users").findOne({
 			name: name,
-		})
-		.then((user) => {
-			if (user) {
-				res.sendStatus(409);
-				return;
-			}
 		});
 
-	db.collection("users").insertOne({
-		name: stripHtml(name.trim()).result,
-		lastStatus: Date.now(),
-	});
+		if (isUserOnline) {
+			res.sendStatus(409);
+			return;
+		}
 
-	db.collection("messages")
-		.insertOne({
+		await db.collection("users").insertOne({
+			name: stripHtml(name.trim()).result,
+			lastStatus: Date.now(),
+		});
+
+		await db.collection("messages").insertOne({
 			from: name,
 			to: "Todos",
 			text: "entra na sala...",
 			type: "status",
 			time: dayjs(new Date()).format("HH:mm:ss"),
-		})
-		.then(() => {
-			res.sendStatus(201);
 		});
+
+		res.sendStatus(201);
+	} catch (error) {
+		res.sendStatus(500);
+	}
 });
 
-app.get("/participants", (req, res) => {
-	db.collection("users")
-		.find()
-		.toArray()
-		.then((allParticipants) => {
-			res.send(allParticipants);
-		});
+app.get("/participants", async (req, res) => {
+	try {
+		const allParticipants = await db.collection("users").find().toArray();
+
+		res.send(allParticipants);
+	} catch (error) {
+		res.sendStatus(500);
+	}
 });
 
-app.post("/messages", (req, res) => {
+app.post("/messages", async (req, res) => {
 	const messageBody = req.body;
 	const { user } = req.headers;
 	const { error } = schema.validate({
@@ -86,154 +87,159 @@ app.post("/messages", (req, res) => {
 		type: messageBody.type,
 	});
 
-	const isParticipantOnline = db.collection("users").findOne({ name: user });
+	try {
+		const isParticipantOnline = await db
+			.collection("users")
+			.findOne({ name: user });
 
-	if (error || !isParticipantOnline) {
-		res.sendStatus(422);
-		return;
-	}
+		if (error || !isParticipantOnline) {
+			res.sendStatus(422);
+			return;
+		}
 
-	db.collection("messages")
-		.insertOne({
+		await db.collection("messages").insertOne({
 			from: stripHtml(user.trim()).result,
 			to: stripHtml(messageBody.to.trim()).result,
 			text: stripHtml(messageBody.text.trim()).result,
 			type: stripHtml(messageBody.type.trim()).result,
 			time: dayjs(new Date()).format("HH:mm:ss"),
-		})
-		.then(() => {
-			res.sendStatus(201);
 		});
+
+		res.sendStatus(201);
+	} catch (error) {
+		res.sendStatus(500);
+	}
 });
 
-app.get("/messages", (req, res) => {
+app.get("/messages", async (req, res) => {
 	const limit = req.query.limit;
 	const user = req.headers.user;
 	const start = limit * -1;
 
-	db.collection("messages")
-		.find()
-		.toArray()
-		.then((allMessages) => {
-			const filteredMessages = allMessages.filter(
-				(msg) => msg.to === "Todos" || msg.to === user || msg.from === user
+	try {
+		const allMessages = await db.collection("messages").find().toArray();
+
+		const filteredMessages = allMessages.filter(
+			(msg) => msg.to === "Todos" || msg.to === user || msg.from === user
+		);
+		if (filteredMessages.length > limit) {
+			const sendMessages = filteredMessages.slice(
+				start,
+				filteredMessages.length
 			);
-			if (filteredMessages.length > limit) {
-				const sendMessages = filteredMessages.slice(
-					start,
-					filteredMessages.length
-				);
 
-				res.send(sendMessages);
-				return;
-			}
+			res.send(sendMessages);
+			return;
+		}
 
-			res.send(filteredMessages);
-		});
+		res.send(filteredMessages);
+	} catch (error) {
+		res.sendStatus(500);
+	}
 });
 
-app.delete("/messages/:idMessage", (req, res) => {
+app.delete("/messages/:idMessage", async (req, res) => {
 	const id = req.params.idMessage;
 	const { user } = req.headers;
 
-	db.collection("messages")
-		.findOne({ _id: ObjectId(`${id}`), from: user })
-		.then((MessageToDelete) => {
-			if (user !== MessageToDelete.from) {
-				res.sendStatus(401);
-				return;
-			}
+	try {
+		const MessageToDelete = await db
+			.collection("messages")
+			.findOne({ _id: ObjectId(`${id}`), from: user });
 
-			db.collection("messages").deleteOne(MessageToDelete);
-		})
-		.catch(() => {
-			res.sendStatus(404);
-		});
+		if (user !== MessageToDelete.from) {
+			res.sendStatus(401);
+			return;
+		}
+
+		await db.collection("messages").deleteOne(MessageToDelete);
+	} catch (error) {
+		res.sendStatus(404);
+	}
 });
 
-app.put("/messages/:idMessage", (req, res) => {
+app.put("/messages/:idMessage", async (req, res) => {
 	const id = req.params.idMessage;
 	const { to, text, type } = req.body;
 	const { user } = req.headers;
 	const { error } = schema.validate({ to, text, type });
 
-	db.collection("messages")
-		.findOne({ _id: ObjectId(`${id}`), from: user })
-		.then((MessageToChange) => {
-			const isParticipantOnline = db
-				.collection("users")
-				.findOne({ name: user });
+	try {
+		const MessageToChange = await db
+			.collection("messages")
+			.findOne({ _id: ObjectId(`${id}`), from: user });
 
-			if (error || !isParticipantOnline) {
-				res.sendStatus(422);
-				return;
-			}
+		const isParticipantOnline = await db
+			.collection("users")
+			.findOne({ name: user });
 
-			if (user !== MessageToChange.from) {
-				res.sendStatus(401);
-				return;
-			}
+		if (error || !isParticipantOnline) {
+			res.sendStatus(422);
+			return;
+		}
 
-			db.collection("messages")
-				.replaceOne(MessageToChange, {
-					from: user,
-					to,
-					text,
-					type,
-					time: dayjs(new Date()).format("HH:mm:ss"),
-				})
-				.then(() => {
-					res.sendStatus(200);
-				});
-		})
-		.catch(() => {
-			res.sendStatus(404);
+		if (user !== MessageToChange.from) {
+			res.sendStatus(401);
+			return;
+		}
+
+		await db.collection("messages").replaceOne(MessageToChange, {
+			from: user,
+			to,
+			text,
+			type,
+			time: dayjs(new Date()).format("HH:mm:ss"),
 		});
+
+		res.sendStatus(200);
+	} catch (error) {
+		res.sendStatus(404);
+	}
 });
 
-app.post("/status", (req, res) => {
+app.post("/status", async (req, res) => {
 	const user = req.headers.user;
 
-	db.collection("users")
-		.replaceOne({ name: user }, { name: user, lastStatus: Date.now() })
-		.then(() => {
-			res.sendStatus(200);
-		})
-		.catch(() => {
-			res.sendStatus(404);
-		});
+	try {
+		await db
+			.collection("users")
+			.replaceOne({ name: user }, { name: user, lastStatus: Date.now() });
+
+		res.sendStatus(200);
+	} catch (error) {
+		res.sendStatus(404);
+	}
 });
 
-function removeInactiveUser(user) {
+function checkInactiveUser(user) {
 	const time = Date.now() - 5000;
 	if (user.lastStatus < time) {
 		return user;
 	}
 }
 
-setInterval(() => {
-	db.collection("users")
-		.find()
-		.toArray()
-		.then((allUsers) => {
-			const inactiveUser = allUsers
-				.map((part) => part)
-				.filter(removeInactiveUser);
+setInterval(async () => {
+	try {
+		const allUsers = await db.collection("users").find().toArray();
 
-			inactiveUser.forEach((item) => {
-				let searchUser = allUsers.find((a) => a === item);
+		const inactiveUser = allUsers.map((part) => part).filter(checkInactiveUser);
 
-				db.collection("messages").insertOne({
-					from: item.name,
-					to: "Todos",
-					text: "sai da sala...",
-					type: "status",
-					time: dayjs(new Date()).format("HH:mm:ss"),
-				});
+		inactiveUser.forEach(async (item) => {
+			let searchUser = allUsers.find((a) => a === item);
 
-				db.collection("users").deleteOne(searchUser);
+			await db.collection("users").deleteOne(searchUser);
+
+			await db.collection("messages").insertOne({
+				from: item.name,
+				to: "Todos",
+				text: "sai da sala...",
+				type: "status",
+				time: dayjs(new Date()).format("HH:mm:ss"),
 			});
 		});
+	} catch (error) {
+		res.sendStatus(500);
+	}
 }, 15000);
 
 app.listen(process.env.PORT);
