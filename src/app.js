@@ -81,11 +81,7 @@ app.get("/participants", async (req, res) => {
 app.post("/messages", async (req, res) => {
 	const messageBody = req.body;
 	const { user } = req.headers;
-	const { error } = schema.validate({
-		to: messageBody.to,
-		text: messageBody.text,
-		type: messageBody.type,
-	});
+	const { error } = schema.validate(messageBody);
 
 	try {
 		const isParticipantOnline = await db
