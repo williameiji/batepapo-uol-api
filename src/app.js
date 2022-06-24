@@ -21,10 +21,6 @@ function connectDB() {
 	db = mongoClient.db("batepapo_uol");
 }
 
-// mongoClient.connect().then(() => {
-// 	db = mongoClient.db("batepapo_uol");
-// });
-
 const schemaUsername = Joi.object({
 	name: Joi.string().min(1).required(),
 });
@@ -146,7 +142,6 @@ app.get("/messages", async (req, res) => {
 			);
 
 			res.send(sendMessages);
-
 			return;
 		}
 
@@ -213,12 +208,14 @@ app.put("/messages/:idMessage", async (req, res) => {
 			return;
 		}
 
-		await db.collection("messages").replaceOne(MessageToChange, {
-			from: user,
-			to,
-			text,
-			type,
-			time: dayjs(new Date()).format("HH:mm:ss"),
+		await db.collection("messages").updateOne(MessageToChange, {
+			$set: {
+				from: user,
+				to,
+				text,
+				type,
+				time: dayjs(new Date()).format("HH:mm:ss"),
+			},
 		});
 
 		res.sendStatus(200);
@@ -235,13 +232,21 @@ app.post("/status", async (req, res) => {
 	connectDB();
 
 	try {
+		const searchUser = await db.collection("users").findOne({ name: user });
+
+		if (!searchUser) {
+			res.sendStatus(404);
+			mongoClient.close();
+			return;
+		}
+
 		await db
 			.collection("users")
-			.replaceOne({ name: user }, { name: user, lastStatus: Date.now() });
+			.updateOne(searchUser, { $set: { name: user, lastStatus: Date.now() } });
 
 		res.sendStatus(200);
 	} catch (error) {
-		res.sendStatus(404);
+		res.sendStatus(500);
 		mongoClient.close();
 	}
 });
@@ -274,7 +279,6 @@ setInterval(async () => {
 				time: dayjs(new Date()).format("HH:mm:ss"),
 			});
 
-			res.sendStatus(200);
 			mongoClient.close();
 		});
 	} catch (error) {
