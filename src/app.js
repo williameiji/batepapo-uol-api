@@ -20,19 +20,21 @@ mongoClient.connect().then(() => {
 	db = mongoClient.db("batepapo_uol");
 });
 
-const schema = Joi.object({
-	name: Joi.string().alphanum().min(1),
+const schemaUsername = Joi.object({
+	name: Joi.string().min(1).required(),
+});
 
-	to: Joi.string().min(1),
+const schemaMessages = Joi.object({
+	to: Joi.string().min(1).required(),
 
-	text: Joi.string().min(1),
+	text: Joi.string().min(1).required(),
 
-	type: Joi.any().valid("message", "private_message"),
+	type: Joi.any().valid("message", "private_message").required(),
 });
 
 app.post("/participants", async (req, res) => {
 	const { name } = req.body;
-	const { error } = schema.validate({ name: name });
+	const { error } = schemaUsername.validate({ name: name });
 
 	if (error) {
 		res.sendStatus(422);
@@ -55,7 +57,7 @@ app.post("/participants", async (req, res) => {
 		});
 
 		await db.collection("messages").insertOne({
-			from: name,
+			from: stripHtml(name.trim()).result,
 			to: "Todos",
 			text: "entra na sala...",
 			type: "status",
@@ -81,7 +83,7 @@ app.get("/participants", async (req, res) => {
 app.post("/messages", async (req, res) => {
 	const messageBody = req.body;
 	const { user } = req.headers;
-	const { error } = schema.validate(messageBody);
+	const { error } = schemaMessages.validate(messageBody);
 
 	try {
 		const isParticipantOnline = await db
@@ -158,7 +160,7 @@ app.put("/messages/:idMessage", async (req, res) => {
 	const id = req.params.idMessage;
 	const { to, text, type } = req.body;
 	const { user } = req.headers;
-	const { error } = schema.validate({ to, text, type });
+	const { error } = schemaMessages.validate({ to, text, type });
 
 	try {
 		const MessageToChange = await db
