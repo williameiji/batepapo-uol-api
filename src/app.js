@@ -16,10 +16,9 @@ app.use(cors());
 const mongoClient = new MongoClient(process.env.MONGO_URL);
 let db;
 
-function connectDB() {
-	mongoClient.connect();
+mongoClient.connect().then(() => {
 	db = mongoClient.db("batepapo_uol");
-}
+});
 
 const schemaUsername = Joi.object({
 	name: Joi.string().min(1).required(),
@@ -42,7 +41,6 @@ app.post("/participants", async (req, res) => {
 		return;
 	}
 
-	connectDB();
 	try {
 		const isUserOnline = await db.collection("users").findOne({
 			name: name,
@@ -50,7 +48,6 @@ app.post("/participants", async (req, res) => {
 
 		if (isUserOnline) {
 			res.sendStatus(409);
-			mongoClient.close();
 			return;
 		}
 
@@ -68,32 +65,25 @@ app.post("/participants", async (req, res) => {
 		});
 
 		res.sendStatus(201);
-		mongoClient.close();
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 });
 
 app.get("/participants", async (req, res) => {
-	connectDB();
-
 	try {
 		const allParticipants = await db.collection("users").find().toArray();
 
 		res.send(allParticipants);
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 });
 
 app.post("/messages", async (req, res) => {
-	const messageBody = req.body;
+	const newMessage = req.body;
 	const { user } = req.headers;
-	const { error } = schemaMessages.validate(messageBody);
-
-	connectDB();
+	const { error } = schemaMessages.validate(newMessage);
 
 	try {
 		const isParticipantOnline = await db
@@ -102,32 +92,27 @@ app.post("/messages", async (req, res) => {
 
 		if (error || !isParticipantOnline) {
 			res.sendStatus(422);
-			mongoClient.close();
 			return;
 		}
 
 		await db.collection("messages").insertOne({
 			from: stripHtml(user.trim()).result,
-			to: stripHtml(messageBody.to.trim()).result,
-			text: stripHtml(messageBody.text.trim()).result,
-			type: stripHtml(messageBody.type.trim()).result,
+			to: stripHtml(newMessage.to.trim()).result,
+			text: stripHtml(newMessage.text.trim()).result,
+			type: stripHtml(newMessage.type.trim()).result,
 			time: dayjs(new Date()).format("HH:mm:ss"),
 		});
 
 		res.sendStatus(201);
-		mongoClient.close();
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 });
 
 app.get("/messages", async (req, res) => {
 	const limit = req.query.limit;
-	const user = req.headers.user;
+	const { user } = req.headers;
 	const start = limit * -1;
-
-	connectDB();
 
 	try {
 		const allMessages = await db.collection("messages").find().toArray();
@@ -148,15 +133,12 @@ app.get("/messages", async (req, res) => {
 		res.send(filteredMessages);
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 });
 
 app.delete("/messages/:idMessage", async (req, res) => {
 	const id = req.params.idMessage;
 	const { user } = req.headers;
-
-	connectDB();
 
 	try {
 		const MessageToDelete = await db
@@ -165,32 +147,26 @@ app.delete("/messages/:idMessage", async (req, res) => {
 
 		if (user !== MessageToDelete.from) {
 			res.sendStatus(401);
-			mongoClient.close();
 			return;
 		}
 
 		await db.collection("messages").deleteOne(MessageToDelete);
 
 		res.sendStatus(200);
-		mongoClient.close();
 	} catch (error) {
 		res.sendStatus(404);
-		mongoClient.close();
 	}
 });
 
 app.put("/messages/:idMessage", async (req, res) => {
 	const id = req.params.idMessage;
-	const { to, text, type } = req.body;
 	const { user } = req.headers;
-	const { error } = schemaMessages.validate({ to, text, type });
-
-	connectDB();
+	const { error } = schemaMessages.validate(req.body);
 
 	try {
 		const MessageToChange = await db
 			.collection("messages")
-			.findOne({ _id: ObjectId(`${id}`), from: user });
+			.findOne({ _id: ObjectId(`${id}`) });
 
 		const isParticipantOnline = await db
 			.collection("users")
@@ -198,56 +174,45 @@ app.put("/messages/:idMessage", async (req, res) => {
 
 		if (error || !isParticipantOnline) {
 			res.sendStatus(422);
-			mongoClient.close();
 			return;
 		}
 
 		if (user !== MessageToChange.from) {
 			res.sendStatus(401);
-			mongoClient.close();
 			return;
 		}
 
 		await db.collection("messages").updateOne(MessageToChange, {
 			$set: {
-				from: user,
-				to,
-				text,
-				type,
+				...req.body,
 				time: dayjs(new Date()).format("HH:mm:ss"),
 			},
 		});
 
 		res.sendStatus(200);
-		mongoClient.close();
 	} catch (error) {
 		res.sendStatus(404);
-		mongoClient.close();
 	}
 });
 
 app.post("/status", async (req, res) => {
-	const user = req.headers.user;
-
-	connectDB();
+	const { user } = req.headers;
 
 	try {
 		const searchUser = await db.collection("users").findOne({ name: user });
 
 		if (!searchUser) {
 			res.sendStatus(404);
-			mongoClient.close();
 			return;
 		}
 
 		await db
 			.collection("users")
-			.updateOne(searchUser, { $set: { name: user, lastStatus: Date.now() } });
+			.updateOne(searchUser, { $set: { lastStatus: Date.now() } });
 
 		res.sendStatus(200);
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 });
 
@@ -259,8 +224,6 @@ function checkInactiveUser(user) {
 }
 
 setInterval(async () => {
-	connectDB();
-
 	try {
 		const allUsers = await db.collection("users").find().toArray();
 
@@ -278,12 +241,9 @@ setInterval(async () => {
 				type: "status",
 				time: dayjs(new Date()).format("HH:mm:ss"),
 			});
-
-			mongoClient.close();
 		});
 	} catch (error) {
 		res.sendStatus(500);
-		mongoClient.close();
 	}
 }, 15000);
 
