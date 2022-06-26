@@ -143,7 +143,7 @@ app.delete("/messages/:idMessage", async (req, res) => {
 	try {
 		const MessageToDelete = await db
 			.collection("messages")
-			.findOne({ _id: ObjectId(`${id}`), from: user });
+			.findOne({ _id: ObjectId(`${id}`) });
 
 		if (user !== MessageToDelete.from) {
 			res.sendStatus(401);
@@ -170,7 +170,7 @@ app.put("/messages/:idMessage", async (req, res) => {
 
 		const isParticipantOnline = await db
 			.collection("users")
-			.findOne({ name: user });
+			.findOne({ name: stripHtml(user.trim()).result });
 
 		if (error || !isParticipantOnline) {
 			res.sendStatus(422);
@@ -199,7 +199,9 @@ app.post("/status", async (req, res) => {
 	const { user } = req.headers;
 
 	try {
-		const searchUser = await db.collection("users").findOne({ name: user });
+		const searchUser = await db
+			.collection("users")
+			.findOne({ name: stripHtml(user.trim()).result });
 
 		if (!searchUser) {
 			res.sendStatus(404);
